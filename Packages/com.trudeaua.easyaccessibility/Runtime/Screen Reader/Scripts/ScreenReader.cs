@@ -1,5 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -25,7 +26,7 @@ using DavyKager;
 /// and disabled if the item is not focused.
 /// 
 /// Additionally, each focusable <see cref="GameObject"/> must have a <see cref="ScreenReaderOutput"/>
-/// component attached to it in order to be focused on. This is becuase the focus system gets the 
+/// component attached to it in order to be focused on. This is because the focus system gets the 
 /// screen reader output for the <see cref="GameObject"/> from the <see cref="ScreenReaderOutput"/>
 /// component.
 /// 
@@ -56,12 +57,24 @@ public class ScreenReader : MonoBehaviour
     /// the contents/purpose of the current screen. This variable is read on scene
     /// load to fulfill that purpose.
     /// </summary>
+    [TextArea(3, 5)]
     public string sceneEnterMessage;
+
+    /// <summary>
+    /// A message detailing controls for the screen reader.
+    /// </summary>
+    [TextArea(3, 5)]
+    public string controlsMessage =  "Press Tab key to focus on UI objects, Return to interact with buttons, and Right"
+            + "Control key to re-read the focused UI object";
+
+    public bool enableControlsMessage = true;
+
+    public bool enableExitGameMessage = true;
 
     /// <summary>
     /// A list of UI objects for which the screen reader will read messages
     /// </summary>
-    public List<GameObject> readableUIObjects;
+    public List<ScreenReaderOutput> readableUIObjects;
 
     /// <summary>
     /// The index of the currently focused <see cref="GameObject"/>
@@ -73,32 +86,36 @@ public class ScreenReader : MonoBehaviour
     /// </summary>
     private EventSystem currentEventSystem;
 
-    /// <summary>
-    /// A message detailing controls for the screen reader.
-    /// </summary>
-    private string controlsMessage;
 
     /// <summary>
     /// Loads the <see cref="Tolk"/> library.
     /// </summary>
     void Awake()
     {
-        controlsMessage = "Press Tab key to focus on UI objects, Return to interact with buttons, and Right"
-            + "Control key to re-read the focused UI object";
+        #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            Debug.Log("Loading Tolk...");
+            Tolk.Load();
+            Debug.Log("Querying for the active screen reader driver...");
+            string name = Tolk.DetectScreenReader();
+            if (name != null)
+            {
+                Debug.Log("The active screen reader driver is: " + name);
+            }
+            else
+            {
+                Debug.Log("None of the supported screen readers is running");
+            }
 
-        Debug.Log("Loading Tolk...");
-        Tolk.Load();
-        Debug.Log("Querying for the active screen reader driver...");
-        string name = Tolk.DetectScreenReader();
-        if (name != null)
+            Debug.Log("Tolk has finished");
+        #else
+            Debug.LogWarning("The Tolk.dll and TolkDotnet.dll libraries only works with Screen Readers on Windows platform for now");
+        #endif
+
+        if (readableUIObjects.Count == 0)
         {
-            Debug.Log("The active screen reader driver is: " + name);
+            readableUIObjects = GetComponentsInChildren<ScreenReaderOutput>().ToList();
         }
-        else
-        {
-            Debug.Log("None of the supported screen readers is running");
-        }
-        Debug.Log("Tolk has finished");
+
     }
 
     /// <summary>
@@ -114,22 +131,37 @@ public class ScreenReader : MonoBehaviour
     {
         currentEventSystem = EventSystem.current;
 
-        foreach(GameObject obj in readableUIObjects)
+        foreach(var obj in readableUIObjects)
         {
-            if(!obj.TryGetComponent<Outline>(out Outline outline) && !obj.TryGetComponent<ScreenReaderOutput>(out ScreenReaderOutput output))
+            if(!obj.TryGetComponent<Outline>(out Outline outline))
             {
                 Debug.LogError("Object \"" + obj.name + "\" from the Screen Reader's focus list does not have the required components." +
                     "Please ensure each object in this list has an Outline component and a ScreenReaderOutput component attached, and make sure" +
                     "that the ScreenReaderOutput component is in a valid state for its GameObject.");
                 Application.Quit();
             }
+
+            #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+                if (!obj.readOnHover)
+                {
+                    ReadFromOutputObject(obj);
+                }
+            #endif
         }
 
         currentFocusedIndex = -1;
 
-        StaticReadText(sceneEnterMessage);
+        #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            if (!string.IsNullOrEmpty(sceneEnterMessage))
+            {
+                StaticReadText(sceneEnterMessage);
+            }
 
-        StaticReadText(controlsMessage);
+            if (enableControlsMessage && !string.IsNullOrEmpty(controlsMessage))
+            {
+                StaticReadText(controlsMessage);
+            }
+        #endif
     }
 
     /// <summary>
@@ -137,6 +169,42 @@ public class ScreenReader : MonoBehaviour
     /// focused <see cref="GameObject"/>.
     /// </summary>
     void Update()
+    {
+        // Only if legacy Input System is enabled
+        FocusElements();
+    }
+
+    /// <summary>
+    /// When this object is destoryed (when the scene changes), unload
+    /// the <see cref="Tolk"/> library.
+    /// </summary>
+    private void OnDestroy()
+    {
+        Debug.Log("Unloading Tolk for scene change...");
+
+        #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            Tolk.Unload();
+        #endif
+    }
+
+    /// <summary>
+    /// On application quit, unload the <see cref="Tolk"/> library.
+    /// </summary>
+    void OnApplicationQuit()
+    {
+        Debug.Log("Unloading Tolk...");
+
+        #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            if (enableExitGameMessage)
+            {
+                StaticReadText("Exiting game...");
+            }
+            Tolk.Unload();
+        #endif
+    }
+
+    [System.Diagnostics.Conditional("ENABLE_LEGACY_INPUT_MANAGER")]
+    public virtual void FocusElements() 
     {
         if ((Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) &&  Input.GetKeyDown(KeyCode.Tab))
         {
@@ -156,26 +224,6 @@ public class ScreenReader : MonoBehaviour
         {
             ReadFocusedObjectOutput();
         }
-    }
-
-    /// <summary>
-    /// When this object is destoryed (when the scene changes), unload
-    /// the <see cref="Tolk"/> library.
-    /// </summary>
-    private void OnDestroy()
-    {
-        Debug.Log("Unloading Tolk for scene change...");
-        Tolk.Unload();
-    }
-
-    /// <summary>
-    /// On application quit, unload the <see cref="Tolk"/> library.
-    /// </summary>
-    void OnApplicationQuit()
-    {
-        Debug.Log("Unloading Tolk...");
-        StaticReadText("Exiting game...");
-        Tolk.Unload();
     }
 
     /// <summary>
@@ -206,7 +254,12 @@ public class ScreenReader : MonoBehaviour
         SetOutlineEnabled(readableUIObjects[currentFocusedIndex], true);
 
         // Set the new selection as the current selected game object in the event system
-        currentEventSystem.SetSelectedGameObject(readableUIObjects[currentFocusedIndex]);
+        var uiObj = readableUIObjects[currentFocusedIndex];
+
+        if (uiObj != null)
+        {
+            currentEventSystem.SetSelectedGameObject(uiObj.gameObject);
+        }
 
         // read the output of the new selection
         ReadFocusedObjectOutput();
@@ -245,7 +298,12 @@ public class ScreenReader : MonoBehaviour
         SetOutlineEnabled(readableUIObjects[currentFocusedIndex], true);
 
         // Set the new selection as the current selected game object in the event system
-        currentEventSystem.SetSelectedGameObject(readableUIObjects[currentFocusedIndex]);
+        var uiObj = readableUIObjects[currentFocusedIndex];
+
+        if (uiObj != null)
+        {
+            currentEventSystem.SetSelectedGameObject(uiObj.gameObject);
+        }
 
         // read the output of the new selection
         ReadFocusedObjectOutput();
@@ -258,7 +316,12 @@ public class ScreenReader : MonoBehaviour
     /// </summary>
     private void PerformActionOnFocusedObject()
     {
-        GameObject gameObject = readableUIObjects[currentFocusedIndex];
+        var uiObj = readableUIObjects.ElementAtOrDefault(currentFocusedIndex);
+
+        if (uiObj != null)
+        {
+            GameObject gameObject = uiObj.gameObject;
+        }
 
         // perform a contextual action on the game object
     }
@@ -272,7 +335,7 @@ public class ScreenReader : MonoBehaviour
     /// </summary>
     /// <param name="gameObject">The <see cref="GameObject"/> to update.</param>
     /// <param name="enabled">The boolean to set the "enabled" state to.</param>
-    private void SetOutlineEnabled(GameObject gameObject, bool enabled)
+    private void SetOutlineEnabled(ScreenReaderOutput gameObject, bool enabled)
     {
         if (gameObject.TryGetComponent<Outline>(out Outline outline))
             outline.enabled = enabled;
@@ -297,16 +360,21 @@ public class ScreenReader : MonoBehaviour
             return;
         }
 
-        GameObject gameObject = readableUIObjects[currentFocusedIndex];
+        var uiObj = readableUIObjects.ElementAtOrDefault(currentFocusedIndex);
 
-        if (gameObject.TryGetComponent<ScreenReaderOutput>(out ScreenReaderOutput output))
+        if (uiObj != null)
         {
-            ReadFromOutputObject(output);
-        }
-        else
-        {
-            Debug.LogError("Focusable gameobject \"" + gameObject.name + "\" has no ScreenReaderOutput component.");
-            Application.Quit();
+            GameObject gameObject = uiObj.gameObject;
+
+            if (gameObject.TryGetComponent<ScreenReaderOutput>(out ScreenReaderOutput output))
+            {
+                ReadFromOutputObject(output);
+            }
+            else
+            {
+                Debug.LogError("Focusable gameobject \"" + gameObject.name + "\" has no ScreenReaderOutput component.");
+                Application.Quit();
+            }
         }
     }
 
@@ -349,12 +417,18 @@ public class ScreenReader : MonoBehaviour
     /// Has the current screen reader read the given string via the 
     /// <see cref="Tolk"/> library. 
     /// </summary>
-    public static void StaticReadText(string outputText)
+    public static void StaticReadText(string outputText, bool interrupt = false)
     {
         Debug.Log("Trying to read " + outputText);
-        if (!Tolk.Output(outputText))
-        {
-            Debug.Log("Failed to output text");
-        }
+
+        #if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            if (!Tolk.Output(outputText, interrupt))
+            {
+                Debug.Log("Failed to output text");
+            }
+
+        #else
+            Debug.LogWarning($"Tolk read only works on Windows for now. [outputText]: {outputText}");
+        #endif
     }
 }
