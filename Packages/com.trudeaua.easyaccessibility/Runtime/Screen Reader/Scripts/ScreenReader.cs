@@ -67,8 +67,19 @@ public class ScreenReader : MonoBehaviour
     public string controlsMessage =  "Press Tab key to focus on UI objects, Return to interact with buttons, and Right"
             + "Control key to re-read the focused UI object";
 
+<<<<<<< HEAD
+    /// <summary>
+    /// Enable/Disable controls information message to screen reader
+    /// </summary>
     public bool enableControlsMessage = true;
 
+    /// <summary>
+    /// Enable/Disable exit game information message screen reader
+    /// </summary>
+=======
+    public bool enableControlsMessage = true;
+
+>>>>>>> 6a8082e60908ef9c11860dc04b5c731ec584d593
     public bool enableExitGameMessage = true;
 
     /// <summary>
@@ -79,7 +90,7 @@ public class ScreenReader : MonoBehaviour
     /// <summary>
     /// The index of the currently focused <see cref="GameObject"/>
     /// </summary>
-    private int currentFocusedIndex;
+    private int currentFocusedIndex = 0;
 
     /// <summary>
     /// The Unity event system that's controlling the current UI scene.
@@ -235,35 +246,50 @@ public class ScreenReader : MonoBehaviour
     /// </summary>
     private void MoveFocusForward()
     {
-        if(readableUIObjects.Count == 0)
+        if (readableUIObjects.Count == 0)
         {
             StaticReadText("No focusable objects in scene.");
+            return;
+        }
+
+        var readerOutput = readableUIObjects.ElementAt(currentFocusedIndex);
+
+        if (readerOutput == null)
+        {
             return;
         }
 
         // disable the outline on the currently selected compenent (if there is one currently selected)
         if (currentFocusedIndex > -1)
         {
-            SetOutlineEnabled(readableUIObjects[currentFocusedIndex], false);
+            SetOutlineEnabled(readerOutput, false);
         }
         
         // If we reach the end of the list, focus on the first list entry
         currentFocusedIndex = (currentFocusedIndex + 1) % readableUIObjects.Count;
 
+        if (readerOutput.Read) {
+            return;
+        }
+
         // enable the outline of the new selection and read its message
-        SetOutlineEnabled(readableUIObjects[currentFocusedIndex], true);
+        SetOutlineEnabled(readerOutput, true);
 
         // Set the new selection as the current selected game object in the event system
+<<<<<<< HEAD
+=======
         var uiObj = readableUIObjects[currentFocusedIndex];
 
         if (uiObj != null)
         {
             currentEventSystem.SetSelectedGameObject(uiObj.gameObject);
         }
+>>>>>>> 6a8082e60908ef9c11860dc04b5c731ec584d593
 
+        currentEventSystem.SetSelectedGameObject(readerOutput.gameObject);
+        
         // read the output of the new selection
         ReadFocusedObjectOutput();
-        
     }
 
     /// <summary>
@@ -281,10 +307,17 @@ public class ScreenReader : MonoBehaviour
             return;
         }
 
+        var readerOutput = readableUIObjects[currentFocusedIndex];
+
+        if (readerOutput == null)
+        {
+            return;
+        }
+
         // disable the outline on the currently selected compenent (if there is one currently selected)
         if (currentFocusedIndex > -1)
         {
-            SetOutlineEnabled(readableUIObjects[currentFocusedIndex], false);
+            SetOutlineEnabled(readerOutput, false);
         }
 
         // Focus on the previous index
@@ -294,15 +327,27 @@ public class ScreenReader : MonoBehaviour
         if (currentFocusedIndex < 0)
             currentFocusedIndex = readableUIObjects.Count - 1;
 
+        if (readerOutput.Read)
+        {
+            return;
+        }
+
         // enable the outline of the new selection and read its message
-        SetOutlineEnabled(readableUIObjects[currentFocusedIndex], true);
+        SetOutlineEnabled(readerOutput, true);
 
         // Set the new selection as the current selected game object in the event system
+<<<<<<< HEAD
+
+        if (readerOutput != null)
+        {
+            currentEventSystem.SetSelectedGameObject(readerOutput.gameObject);
+=======
         var uiObj = readableUIObjects[currentFocusedIndex];
 
         if (uiObj != null)
         {
             currentEventSystem.SetSelectedGameObject(uiObj.gameObject);
+>>>>>>> 6a8082e60908ef9c11860dc04b5c731ec584d593
         }
 
         // read the output of the new selection
@@ -316,12 +361,23 @@ public class ScreenReader : MonoBehaviour
     /// </summary>
     private void PerformActionOnFocusedObject()
     {
+<<<<<<< HEAD
+        var readerOutput = readableUIObjects.ElementAtOrDefault(currentFocusedIndex);
+
+        if (readerOutput != null || readerOutput.Read)
+        {
+            return;
+        }
+
+        GameObject gameObject = readerOutput.gameObject;
+=======
         var uiObj = readableUIObjects.ElementAtOrDefault(currentFocusedIndex);
 
         if (uiObj != null)
         {
             GameObject gameObject = uiObj.gameObject;
         }
+>>>>>>> 6a8082e60908ef9c11860dc04b5c731ec584d593
 
         // perform a contextual action on the game object
     }
@@ -360,11 +416,19 @@ public class ScreenReader : MonoBehaviour
             return;
         }
 
+<<<<<<< HEAD
+        var readerOutput = readableUIObjects.ElementAtOrDefault(currentFocusedIndex);
+
+        if (readerOutput != null)
+        {
+            GameObject gameObject = readerOutput.gameObject;
+=======
         var uiObj = readableUIObjects.ElementAtOrDefault(currentFocusedIndex);
 
         if (uiObj != null)
         {
             GameObject gameObject = uiObj.gameObject;
+>>>>>>> 6a8082e60908ef9c11860dc04b5c731ec584d593
 
             if (gameObject.TryGetComponent<ScreenReaderOutput>(out ScreenReaderOutput output))
             {
@@ -406,6 +470,7 @@ public class ScreenReader : MonoBehaviour
     public void ReadFromOutputObject(ScreenReaderOutput outputObject)
     {
         StaticReadText(outputObject.getScreenReaderOutput());
+        outputObject.Read = true;
     }
 
 

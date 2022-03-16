@@ -43,6 +43,8 @@ public class ScreenReaderOutput : MonoBehaviour, IPointerEnterHandler
 
     private Text textComponent;
 
+    public bool Read { get; set; }
+
     /// <summary>
     /// Add the <see cref="Outline"/> component in Awake so that
     /// it's there when the <see cref="ScreenReader"/> object looks for 
